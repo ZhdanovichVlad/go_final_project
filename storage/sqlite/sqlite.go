@@ -6,6 +6,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"log"
 	"os"
+	"time"
 )
 
 type Storage struct {
@@ -123,6 +124,9 @@ func (s Storage) GetTask(id string) (handlers.Task, error) {
 			return handlers.Task{}, fmt.Errorf("failed scan from database", err)
 		}
 	}
+	if task.ID == "" {
+		return handlers.Task{}, fmt.Errorf("database query not found", err)
+	}
 	return task, nil
 }
 
@@ -155,8 +159,6 @@ func (s Storage) DeleteTask(idTask string) error {
 		return fmt.Errorf("data delete error", err)
 	}
 	rowsAffected, err := result.RowsAffected()
-	fmt.Println("количетсво измененных строк", rowsAffected)
-	fmt.Println(s.GetTask(idTask))
 	if err != nil {
 		return fmt.Errorf("error when receiving information about the number of updated rows", err)
 	}
@@ -182,4 +184,60 @@ func (s Storage) UpdateDateTask(idTask string, newDateString string) error {
 		return fmt.Errorf("the number of updated tasks is 0", err)
 	}
 	return nil
+}
+
+func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOuptuTasks int) ([]handlers.Task, error) {
+	fmt.Println("вход в SearchTasks")
+	fmt.Println("Значение code ", code)
+	var tasks []handlers.Task
+	switch code {
+	case 1:
+		fmt.Println("Вход в case 1")
+		date, err := time.Parse("02.01.2006", searchQuery)
+		if err != nil {
+			return nil, fmt.Errorf("error in date conversion in the searsh function. package sqlite")
+		}
+
+		stmt, err := s.db.Prepare("SELECT * FROM scheduler WHERE date = ? LIMIT ?")
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to create a request for select from database", err)
+		}
+		rows, err := stmt.Query(date.Format("20060102"), NumberOfOuptuTasks)
+		if err != nil {
+			return nil, fmt.Errorf("failed request for select from database", err)
+		}
+		for rows.Next() {
+			task := handlers.Task{}
+			err = rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
+			if err != nil {
+				return nil, fmt.Errorf("failed scan from database", err)
+			}
+			tasks = append(tasks, task)
+		}
+		defer rows.Close()
+
+	case 2:
+		fmt.Println("Вход в case 2")
+		stmt, err := s.db.Prepare("SELECT * FROM scheduler WHERE title LIKE ? OR comment LIKE ? ORDER BY date LIMIT ?")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create a request for select from database", err)
+		}
+		rows, err := stmt.Query("%"+searchQuery+"%", "%"+searchQuery+"%", NumberOfOuptuTasks)
+		if err != nil {
+			return nil, fmt.Errorf("failed request for select from database", err)
+		}
+		for rows.Next() {
+			task := handlers.Task{}
+			err = rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
+			fmt.Println("найдена строка ", task)
+			if err != nil {
+				return nil, fmt.Errorf("failed scan from database", err)
+			}
+			tasks = append(tasks, task)
+		}
+		fmt.Println("tasks в поиске", tasks)
+
+	}
+	return tasks, nil
 }

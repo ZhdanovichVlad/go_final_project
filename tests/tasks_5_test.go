@@ -18,7 +18,6 @@ func addTask(t *testing.T, task task) string {
 		"repeat":  task.repeat,
 	}, http.MethodPost)
 	assert.NoError(t, err)
-	fmt.Println("переменная ret", ret)
 	assert.NotNil(t, ret["id"])
 	id := fmt.Sprint(ret["id"])
 	assert.NotEmpty(t, id)
