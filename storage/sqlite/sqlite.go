@@ -220,12 +220,9 @@ func (s Storage) UpdateDateTask(idTask string, newDateString string) error {
 // which specifies how to search. The method interacts with http-servet.handlers.GetTasksHundler. The encodings are assigned in the same method.
 // The method takes as input the code, the string to search for, and the number of handlers to output. Returns a slice of handlers.Task structures or an error.
 func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOutTasks int) ([]handlers.Task, error) {
-	fmt.Println("вход в SearchTasks")
-	fmt.Println("Значение code ", code)
 	var tasks []handlers.Task
 	switch code {
 	case 1:
-		fmt.Println("Вход в case 1")
 		date, err := time.Parse("02.01.2006", searchQuery)
 		if err != nil {
 			return nil, fmt.Errorf("error in date conversion in the searsh function. package sqlite")
@@ -251,7 +248,6 @@ func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOutTasks int)
 		defer rows.Close()
 
 	case 2:
-		fmt.Println("Вход в case 2")
 		stmt, err := s.db.Prepare("SELECT * FROM scheduler WHERE title LIKE ? OR comment LIKE ? ORDER BY date LIMIT ?")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create a request for select from database", err)
@@ -263,13 +259,11 @@ func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOutTasks int)
 		for rows.Next() {
 			task := handlers.Task{}
 			err = rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
-			fmt.Println("найдена строка ", task)
 			if err != nil {
 				return nil, fmt.Errorf("failed scan from database", err)
 			}
 			tasks = append(tasks, task)
 		}
-		fmt.Println("tasks в поиске", tasks)
 
 	}
 	return tasks, nil
