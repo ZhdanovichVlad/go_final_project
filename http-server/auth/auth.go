@@ -5,32 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	http_server "github.com/ZhdanovichVlad/go_final_project/http-server"
-	"github.com/ZhdanovichVlad/go_final_project/http-server/token"
 	"github.com/ZhdanovichVlad/go_final_project/storage/users"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/dgrijalva/jwt-go"
 	"net/http"
+	"os"
 	"time"
 )
 
-type Service struct {
-	claims      token.AuthClaims
-	accessToken string
+type Claims struct {
+	Authorized bool `json:"authorized"`
+	Sum        int  `json:"sum"`
+	jwt.StandardClaims
 }
 
-func NewService() *Service {
-	return &Service{}
-}
-
-func (s Service) GetToken() (string, error) {
-	if s.accessToken == "" {
-		return "", fmt.Errorf("accessToken is emty")
-	} else {
-		return s.accessToken, nil
-	}
-}
-
-func (s Service) Authorization(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("Вход в ручку Authorization")
+// Authorization function for user authorization.
+// Authorization функция для авторизации пользователя.
+func Authorization(w http.ResponseWriter, req *http.Request) {
 	var user users.User
 	var buf bytes.Buffer
 	_, err := buf.ReadFrom(req.Body)
@@ -49,7 +39,6 @@ func (s Service) Authorization(w http.ResponseWriter, req *http.Request) {
 		w.Write(msg)
 		return
 	}
-
 	envPassword, err := user.GetPasswordFromEnv()
 	if err != nil {
 		msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{".env read error"}, false)
@@ -60,46 +49,108 @@ func (s Service) Authorization(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if user.GetPassword() != envPassword {
+
 		msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong password"}, true)
 		w.WriteHeader(errInt)
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.Write(msg)
 		return
 	}
-	now := time.Now()
-	s.claims = token.AuthClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(8 * time.Hour)),
-		},
-		TokenSum: 500,
-	}
 
-	accessToken, err := token.GenerateAccessToken(s.claims)
+	// проверяем наличие JWT-токена в cookie
+	cookie, err := req.Cookie("token")
+	if err == nil {
+		tokenStr := cookie.Value
+		claims := &Claims{}
+		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+			return []byte(envPassword), nil
+		})
+
+		if err == nil && token.Valid && claims.ExpiresAt > time.Now().Unix() {
+			response := map[string]string{"token": tokenStr}
+			answear, err := json.Marshal(response)
+			if err != nil {
+				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"sirelization error"}, false)
+				w.WriteHeader(errInt)
+				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+				w.Write(msg)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			w.Write(answear)
+			return
+		}
+	}
+	// генерация нового JWT-токена
+	expirationTime := time.Now().Add(8 * time.Hour)
+	claims := &Claims{
+		Authorized: true,
+		Sum:        500,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(envPassword))
 	if err != nil {
-		msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"access token generation error"}, false)
+		msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when creating a new token"}, false)
 		w.WriteHeader(errInt)
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.Write(msg)
 		return
 	}
-	s.accessToken = accessToken
-	accessTokenCookie := http.Cookie{
-		Name:     "accessToken",
-		Value:    s.accessToken,
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    tokenString,
+		Path:     "/",
+		Expires:  expirationTime,
 		HttpOnly: true,
+	})
+	// записываем в формате json JWT-токен и отправляем пользователю.
+	response := map[string]string{"token": tokenString}
+	answear, err := json.Marshal(response)
+	if err != nil {
+		msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"sirelization error"}, false)
+		w.WriteHeader(errInt)
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.Write(msg)
+		return
 	}
-	http.SetCookie(w, &accessTokenCookie)
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.Write(answear)
 }
 
-func (s Service) VerifyUser(cookieToken string) bool {
-	//userToken, err := s.GetToken()
-	//if err != nil {
-	//	return false
-	//}
-	userToken := s.accessToken
-	fmt.Println("Куки токен", cookieToken)
-	fmt.Println("user токен", userToken)
-	fmt.Println("Сравнение", userToken == cookieToken)
-	return userToken == cookieToken
+// CheckToken function for user authentication.
+// CheckToken функция для аутентификации пользователей.
+func CheckToken(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		envPassword := os.Getenv("TODO_PASSWORD")
+
+		// парсим JWT-токен из куки и если он действителен пропускаем на следующую страничку
+		if len(envPassword) > 0 {
+			var cookieToken string
+			cookie, err := req.Cookie("token")
+			if err == nil {
+				cookieToken = cookie.Value
+			}
+			cookieToken = cookie.Value
+			claims := &Claims{}
+			token, err := jwt.ParseWithClaims(cookieToken, claims, func(token *jwt.Token) (interface{}, error) {
+				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+				}
+				return []byte(envPassword), nil
+			})
+			if err != nil {
+				http.Error(w, "Authentication required", http.StatusUnauthorized)
+				return
+			}
+
+			if !token.Valid {
+				http.Error(w, "Authentification required", http.StatusUnauthorized)
+				return
+			}
+		}
+		next(w, req)
+	})
 }

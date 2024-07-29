@@ -7,49 +7,10 @@ import (
 	"time"
 )
 
-//func NextDateCopy(now time.Time, date string, repeat string) (string, error) {
-//	if repeat == "" {
-//		return "", nil
-//	}
-//	dateTask, err := time.Parse("20060102", date)
-//	if err != nil {
-//		return "", fmt.Errorf("failed to convert string to date", err)
-//	}
-//	codeRepeat := strings.Split(repeat, " ")
-//	if len(codeRepeat) != 2 && !strings.EqualFold(codeRepeat[0], "y") {
-//		return "", fmt.Errorf("string conversion error repeat")
-//	}
-//	switch strings.ToLower(codeRepeat[0]) {
-//	case "y":
-//		dateTask = addDateTask(now, dateTask, 1, 0, 0)
-//	case "d":
-//		digit, err := convetToIntAncCheck(codeRepeat[1])
-//		if err != nil {
-//			return "", err
-//		}
-//		dateTask = addDateTask(now, dateTask, 0, 0, digit)
-//	case "w":
-//
-//		dayOfWeek
-//		// Текущая дата и время
-//		now := time.Now()
-//
-//		// Вычисление разницы в днях
-//		daysToTarget := int(time.Weekday(dayOfWeek-1) - now.Weekday()) // -1 для корректного сопоставления с time.Weekday
-//		if daysToTarget < 0 {
-//			daysToTarget += 7
-//		}
-//
-//		// Добавление дней к текущей дате
-//		targetDate := now.AddDate(0, 0, daysToTarget)
-//
-//	default:
-//		return "", fmt.Errorf("unknown key in repeat")
-//	}
-//	return dateTask.Format("20060102"), nil
-//}
-
+// NextDate function calculates the date of the next task execution based on the value in the repeat string
+// NextDate функция рассчитывает дату следующего выполнения задания исходя из значения в строке повтор
 func NextDate(now time.Time, date string, repeat string) (string, error) {
+	// если правила повторения не указано, то возвращаем пустую строку
 	if repeat == "" {
 		return "", nil
 	}
@@ -57,33 +18,35 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to convert string to date", err)
 	}
+	// сделаем преобразование в руны, и проверим первый символ на нашу кодировку
 	repeatRune := []rune(repeat)
 	firstRepeatLetter := string(repeatRune[0])
 	if firstRepeatLetter != "y" && firstRepeatLetter != "d" && firstRepeatLetter != "w" && firstRepeatLetter != "m" {
 		return "", fmt.Errorf("wrong repetition rule")
 	}
-	var dateAnswear time.Time
+	var dateAnswer time.Time // создадим ответ который и будет возвращать.
 	switch firstRepeatLetter {
 	case "y":
-		dateAnswear = addDateTask(now, dateTask, 1, 0, 0)
+		dateAnswer = addDateTask(now, dateTask, 1, 0, 0)
 	case "d":
 		repeatSplit := strings.Split(repeat, " ")
 		if len(repeatSplit) != 2 {
 			return "", fmt.Errorf("wrong repetition rule")
 		}
-		digit, err := convetToIntAncCheck(repeatSplit[1])
+		// для преобразования int и проверку условий используем функцию convertToIntAncCheck
+		digit, err := convertToIntAndCheck(repeatSplit[1])
 		if err != nil {
 			return "", err
 		}
-		dateAnswear = addDateTask(now, dateTask, 0, 0, digit)
+		dateAnswer = addDateTask(now, dateTask, 0, 0, digit)
 	case "w":
-		repeatCheak := strings.Split(repeat, " ")
-		if len(repeatCheak) != 2 {
+		repeatCheck := strings.Split(repeat, " ")
+		if len(repeatCheck) != 2 {
 			return "", fmt.Errorf("wrong repetition rule")
 		}
 		lastRepeatRune := repeatRune[2:]
 		repeatSplit := strings.Split(string(lastRepeatRune), ",")
-		dateAnswear = now.AddDate(1, 0, 0)
+		dateAnswer = now.AddDate(1, 0, 0)
 		dateComparison := dateTask
 		for _, val := range repeatSplit {
 			valInt, err := strconv.Atoi(val)
@@ -100,10 +63,9 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 				if now.After(dateComparison) {
 					dateComparison = addDateTask(now, dateComparison, 0, 0, 7)
 				}
-				if dateAnswear.After(dateComparison) {
-					dateAnswear = dateComparison
+				if dateAnswer.After(dateComparison) {
+					dateAnswer = dateComparison
 				}
-				fmt.Println("dateAnswear в цикле", dateAnswear)
 			} else {
 				return "", fmt.Errorf("error when entering the day of the week")
 			}
@@ -112,16 +74,20 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 		lastRepeatRune := repeatRune[2:]
 		lastStringSplit := strings.Split(string(lastRepeatRune), " ")
 		var masDays []string
-		var masMounth []string
-		var flagWithMounth bool
-		dateAnswear = time.Date(now.Year()+1, now.Month(), 1, 0, 0, 0, 0, now.Location())
+		var masMonth []string
+		var flagWithMonth bool
+		dateAnswer = time.Date(now.Year()+1, now.Month(), 1, 0, 0, 0, 0, now.Location())
 		dateComparison := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		// так как по условию задачи возможны два случая,
+		// 1-ый m 3 (повторения в указанные дни месяца)
+		// 2-той когда одна m (повторение ежемесячно)
+		// делим на два случая и в зависимости от значения flagWithMonth обрабатываем конкретный случай
 		if len(lastStringSplit) == 2 {
 			masDays = strings.Split(lastStringSplit[0], ",")
-			masMounth = strings.Split(lastStringSplit[1], ",")
-			flagWithMounth = true
+			masMonth = strings.Split(lastStringSplit[1], ",")
+			flagWithMonth = true
 		}
-		if flagWithMounth { // если на входе в даты и месяца
+		if flagWithMonth { // обработка 1-ого случая m 3 (повторения в указанные дни месяца)
 			for _, valDays := range masDays {
 				valDaysInt, err := strconv.Atoi(valDays)
 				if err != nil {
@@ -130,32 +96,26 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 				if 1 < valDaysInt && valDaysInt > 31 {
 					return "", fmt.Errorf("wrong repetition rule")
 				}
-				for _, valMounth := range masMounth {
-					valMounthInt, err := strconv.Atoi(valMounth)
+				for _, valMonth := range masMonth {
+					valMonthInt, err := strconv.Atoi(valMonth)
 					if err != nil {
 						return "", fmt.Errorf("wrong repetition rule")
 					}
-					if 1 < valMounthInt && valMounthInt > 12 {
+					if 1 < valMonthInt && valMonthInt > 12 {
 						return "", fmt.Errorf("wrong repetition rule")
 					}
 					if valDaysInt == -1 && valDaysInt == -2 {
-						dateComparison = time.Date(now.Year(), time.Month(valMounthInt)+1, valDaysInt, 0, 0, 0, 0, now.Location())
+						dateComparison = time.Date(now.Year(), time.Month(valMonthInt)+1, valDaysInt, 0, 0, 0, 0, now.Location())
 					} else {
-						dateComparison = time.Date(now.Year(), time.Month(valMounthInt), valDaysInt, 0, 0, 0, 0, now.Location())
+						dateComparison = time.Date(now.Year(), time.Month(valMonthInt), valDaysInt, 0, 0, 0, 0, now.Location())
 					}
-					fmt.Println("значениея ", valDays, " ", valMounth)
-					fmt.Println("dateComparison ", dateComparison)
-					fmt.Println("dateAnswear    ", dateAnswear)
-					fmt.Println("now.Before(dateComparison) ", now.Before(dateComparison))
-					fmt.Println("dateAnswear.Before(dateComparison)", dateAnswear.Before(dateComparison))
-					fmt.Println("result", now.Before(dateComparison) && dateAnswear.Before(dateComparison))
-					if now.Before(dateComparison) && dateAnswear.After(dateComparison) && !now.Equal(dateComparison) {
-						dateAnswear = dateComparison
+					if now.Before(dateComparison) && dateAnswer.After(dateComparison) && !now.Equal(dateComparison) {
+						dateAnswer = dateComparison
 					}
 				}
 			}
 
-		} else { /// если на входе в повторение только даты
+		} else { // обработка 2-того случая. Когда одна m (повторение ежемесячно)
 			repeatSplit := strings.Split(lastStringSplit[0], ",")
 			for _, val := range repeatSplit {
 				valInt, err := strconv.Atoi(val)
@@ -164,20 +124,16 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 				}
 				if valInt == -1 || valInt == -2 {
 					dateComparison = time.Date(dateTask.Year(), dateTask.Month()+1, valInt+1, 0, 0, 0, 0, dateTask.Location())
-					fmt.Println("значение valInt", valInt)
-					fmt.Println("время сегодня", now)
-					fmt.Println("полученное время по условиям", dateComparison)
-					if dateAnswear.After(dateComparison) {
-						fmt.Println("перезапись времени")
-						dateAnswear = dateComparison
+					if dateAnswer.After(dateComparison) {
+						dateAnswer = dateComparison
 					}
 				} else if 1 <= valInt && valInt < 31 {
 					dateComparison = time.Date(dateTask.Year(), dateTask.Month(), valInt, 0, 0, 0, 0, dateTask.Location())
 					if now.After(dateComparison) || now.Equal(dateComparison) {
 						dateComparison = addDateTask(now, dateComparison, 0, 1, 0)
 					}
-					if dateAnswear.After(dateComparison) {
-						dateAnswear = dateComparison
+					if dateAnswer.After(dateComparison) {
+						dateAnswer = dateComparison
 					}
 
 				} else if valInt == 31 {
@@ -189,22 +145,24 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 					if now.After(dateComparison) || now.Equal(dateComparison) {
 						dateComparison = addDateTask(now, dateComparison, 0, 1, 0)
 					}
-					if dateAnswear.After(dateComparison) {
-						dateAnswear = dateComparison
+					if dateAnswer.After(dateComparison) {
+						dateAnswer = dateComparison
 					}
 
 				} else {
 					return "", fmt.Errorf("wrong repetition rule")
 				}
 			}
-			fmt.Println("вывод ответа dateAnswear", dateAnswear)
 		}
 
 	}
-	return dateAnswear.Format("20060102"), nil
+	// возврат даты в формате string в соответствии с ТЗ
+	return dateAnswer.Format("20060102"), nil
 }
 
-func convetToIntAncCheck(num string) (int, error) {
+// convertToIntAndCheck A function to convert a number in string format to int and check if the number is positive, and if it is less than 400. ( according to the problem condition)
+// convertToIntAndCheck функция для конвертации числа в формате string в int и проверке числа на положительное, и что бы было меньше 400. (в соответствии с условием задачи)
+func convertToIntAndCheck(num string) (int, error) {
 	digit, err := strconv.Atoi(num)
 	if err != nil {
 		return 0, err

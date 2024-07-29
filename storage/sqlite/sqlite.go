@@ -1,11 +1,13 @@
 package sqlite
 
+// пакет для работы с базой данных
 import (
 	"fmt"
 	"github.com/ZhdanovichVlad/go_final_project/http-server/handlers"
 	"github.com/jmoiron/sqlx"
 	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -16,12 +18,11 @@ type Storage struct {
 // New Функция возвращает ссылку на базу данных. Необходимо передать путь к БД через переменную DBFile
 // Если база данных существует, то подключается к существующей базе денных.
 // Если база данных не существует, то создает новую БД.
+// New The function returns a reference to the database. It is necessary to pass the path to the database through the DBFile variable
+// If the database exists, it connects to the existing database.
+// If the database does not exist, it creates a new database.
 func New(DBFile string) (*Storage, error) {
-	//appPath, err := os.Getwd()
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//DBFile := filepath.Join(appPath, "scheduler.db")
+
 	_, err := os.Stat(DBFile)
 	var install bool
 	if err != nil {
@@ -35,7 +36,6 @@ func New(DBFile string) (*Storage, error) {
 		}
 	}
 
-	//db, err := sql.Open("sqlite3", DBFile)
 	db, err := sqlx.Connect("sqlite3", DBFile)
 
 	if err != nil {
@@ -59,36 +59,47 @@ func New(DBFile string) (*Storage, error) {
 	return &Storage{db: db}, nil
 }
 
-func (s *Storage) AddTask(date string, title string, comment string, repeat string) (int64, error) {
-	stmt, err := s.db.Prepare("INSERT INTO scheduler(date, title,comment,repeat) VALUES(?, ?,?,?)")
-	if err != nil {
-		return 0, fmt.Errorf("failed to create a request for database update", err)
-	}
-
-	res, err := stmt.Exec(date, title, comment, repeat)
-	if err != nil {
-		return 0, fmt.Errorf("failed to INSERT a request for database update", err)
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("Failed to get last insert id:", err)
-	}
-	return id, nil
-
-}
-
+// Close method to close the database
+// Close метод для закрытия базы данных
 func (s *Storage) Close() {
 	s.db.Close()
 }
 
-func (s Storage) GetTasks(NumberOfOuptuTasks int, tasks []handlers.Task) ([]handlers.Task, error) {
+// AddTask method adds tasks to the database. The method interacts with http-servet.handlers.PostTask .
+// Takes data as input and returns id in string format or error
+// AddTask метод добавляет задачи в базу данных. Метод взаимодействует с ручкой http-servet.handlers.PostTask .
+// Принимает на вход данные и возвращает id в формате string или ошибку
+func (s *Storage) AddTask(date string, title string, comment string, repeat string) (string, error) {
+	stmt, err := s.db.Prepare("INSERT INTO scheduler(date, title,comment,repeat) VALUES(?, ?,?,?)")
+	if err != nil {
+		return "", fmt.Errorf("failed to create a request for database update", err)
+	}
+
+	res, err := stmt.Exec(date, title, comment, repeat)
+	if err != nil {
+		return "", fmt.Errorf("failed to INSERT a request for database update", err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return "", fmt.Errorf("Failed to get last insert id:", err)
+	}
+	idString := strconv.Itoa(int(id))
+	return idString, nil
+
+}
+
+// GetTasks method returns the specified in NumberOfOutTasks from the database The method interacts with the handle http-servet.handlers.GetTasksHundler
+// Returns a response in the form of a slice of handlers.Task structures or an error
+// GetTasks метод возвращает из базы данных указанное в NumberOfOutTasks Метод взаимодействует с ручкой http-servet.handlers.GetTasksHundler
+// Возвращает ответ в форме слайса структур handlers.Task или ошибку
+func (s Storage) GetTasks(NumberOfOutTasks int, tasks []handlers.Task) ([]handlers.Task, error) {
 
 	stmt, err := s.db.Prepare("SELECT * FROM scheduler ORDER BY date LIMIT ? ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a request for select from database", err)
 	}
-	rows, err := stmt.Query(NumberOfOuptuTasks)
+	rows, err := stmt.Query(NumberOfOutTasks)
 	defer rows.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed request for select from database", err)
@@ -105,7 +116,10 @@ func (s Storage) GetTasks(NumberOfOuptuTasks int, tasks []handlers.Task) ([]hand
 	return tasks, nil
 }
 
-// GetTask function to retrieve one task. receives task id as input and returns Task structure and error.
+// GetTask method returns a task from the database by the given ID.  The method interacts with http-servet.handlers.GetTaskHundler handle
+// Returns a response in the form of handlers.Task structure or an error
+// GetTask метод возвращает из базы данных задачу по заданному ID.  Метод взаимодействует с ручкой http-servet.handlers.GetTaskHundler
+// Возвращает ответ в форме структуры handlers.Task или ошибку
 func (s Storage) GetTask(id string) (handlers.Task, error) {
 	stmt, err := s.db.Prepare("SELECT * FROM scheduler WHERE id =? ")
 	if err != nil {
@@ -130,6 +144,10 @@ func (s Storage) GetTask(id string) (handlers.Task, error) {
 	return task, nil
 }
 
+// UpdateTask method updates tasks in the database. The method updates all fields. Takes a task as input and returns an error if it failed to update.
+// The method interacts with the http-servet.handlers.CorrectTask handle
+// UpdateTask метод обновляет в базе данных задачи. Метод обновляет все поля. Принимает на вход задачу и возвращает ошибку, если не удалось обновить.
+// Метод взаимодействует с ручкой http-servet.handlers.CorrectTask
 func (s Storage) UpdateTask(task handlers.Task) error {
 	stmt, err := s.db.Prepare("UPDATE scheduler SET date = ?, title = ?, comment = ?, repeat = ?  WHERE id = ?")
 	if err != nil {
@@ -149,6 +167,10 @@ func (s Storage) UpdateTask(task handlers.Task) error {
 	return nil
 }
 
+// DeleteTask method for deleting a completed task from the database. Takes task ID as input and returns an error if deletion failed.
+// The method interacts with the http-servet.handlers.DeleteTaskHundler handle
+// DeleteTask метод для удаления из базы данных выполненной задачи. Принимает на вход ID задачи и возвращает ошибку, если удаление не удалось.
+// Метод взаимодействует с ручкой http-servet.handlers.DeleteTaskHundler
 func (s Storage) DeleteTask(idTask string) error {
 	stmt, err := s.db.Prepare("DELETE FROM scheduler WHERE id = ?")
 	if err != nil {
@@ -167,6 +189,13 @@ func (s Storage) DeleteTask(idTask string) error {
 	}
 	return nil
 }
+
+// UpdateDateTask method updates the task database. The method updates only the date. It is needed to correctly change the task if it is repeated.
+// Accepts ID and new date as input and returns an error if the update failed.
+// The method interacts with the http-servet.handlers.DoneTaskHundler handle
+// UpdateDateTask метод обновляет в базе данных задачи. Метод обновляет только дату. Нужен для корректного изменения задачи, если она повторяется.
+// Принимает на вход ID и новую дату и возвращает ошибку, если не удалось обновить.
+// Метод взаимодействует с ручкой http-servet.handlers.DoneTaskHundler
 func (s Storage) UpdateDateTask(idTask string, newDateString string) error {
 	stmt, err := s.db.Prepare("UPDATE scheduler SET date = ? WHERE id = ?")
 	if err != nil {
@@ -186,7 +215,10 @@ func (s Storage) UpdateDateTask(idTask string, newDateString string) error {
 	return nil
 }
 
-func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOuptuTasks int) ([]handlers.Task, error) {
+// SearchTasks method searches the database for information by ID or title and comment fields. It accepts encoding 1 or 2 as input,
+// which specifies how to search. The method interacts with http-servet.handlers.GetTasksHundler. The encodings are assigned in the same method.
+// The method takes as input the code, the string to search for, and the number of handlers to output. Returns a slice of handlers.Task structures or an error.
+func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOutTasks int) ([]handlers.Task, error) {
 	fmt.Println("вход в SearchTasks")
 	fmt.Println("Значение code ", code)
 	var tasks []handlers.Task
@@ -203,7 +235,7 @@ func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOuptuTasks in
 		if err != nil {
 			return nil, fmt.Errorf("failed to create a request for select from database", err)
 		}
-		rows, err := stmt.Query(date.Format("20060102"), NumberOfOuptuTasks)
+		rows, err := stmt.Query(date.Format("20060102"), NumberOfOutTasks)
 		if err != nil {
 			return nil, fmt.Errorf("failed request for select from database", err)
 		}
@@ -223,7 +255,7 @@ func (s Storage) SearchTasks(code int, searchQuery string, NumberOfOuptuTasks in
 		if err != nil {
 			return nil, fmt.Errorf("failed to create a request for select from database", err)
 		}
-		rows, err := stmt.Query("%"+searchQuery+"%", "%"+searchQuery+"%", NumberOfOuptuTasks)
+		rows, err := stmt.Query("%"+searchQuery+"%", "%"+searchQuery+"%", NumberOfOutTasks)
 		if err != nil {
 			return nil, fmt.Errorf("failed request for select from database", err)
 		}

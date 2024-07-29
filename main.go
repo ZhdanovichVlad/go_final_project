@@ -1,10 +1,8 @@
 package main
 
 import (
-	"fmt"
 	authorization "github.com/ZhdanovichVlad/go_final_project/http-server/auth"
 	"github.com/ZhdanovichVlad/go_final_project/http-server/handlers"
-	"github.com/ZhdanovichVlad/go_final_project/http-server/midll"
 	"github.com/ZhdanovichVlad/go_final_project/storage/sqlite"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx"
@@ -17,6 +15,7 @@ import (
 )
 
 func main() {
+	// используем библиотеку godotenv что бы загрузить переменные окружения корня проекта
 	err := godotenv.Load(".env")
 	if err != nil {
 		log.Fatalf("Error loading .env file: %s", err)
@@ -28,25 +27,23 @@ func main() {
 	storage, err := sqlite.New(DBFile)
 	defer storage.Close()
 
-	service := authorization.NewService()
-	authMiddl := midll.NewAuthMiddleware(service)
-
 	server := chi.NewRouter()
+	// Описание основных хэндлеров. Middleware authorization.CheckToken используется для проверки JWT токена
+	// Токен формируется при авторизации пользователя.
 	server.Handle("/*", http.FileServer(http.Dir("web")))
-	//server.HandleFunc("/api/nextdate", handlers.ApiNextDate)
-	//server.Post("/api/task", handlers.PostTask(storage))
-	//server.Get("/api/task", handlers.GetTaskHundler(storage))
-	//server.Put("/api/task", handlers.CorrectTask(storage))
-	//server.Post("/api/task/done", handlers.DoneTaskHundler(storage))
-	//server.Delete("/api/task", handlers.DeleteTaskHundler(storage))
-	//server.Get("/api/tasks", handlers.GetTasksHundler(storage, NumberOfOuptuTasks))
-	server.Get("/api/tasks", authMiddl.CheckToken(handlers.GetTasksHundler(storage, NumberOfOuptuTasks)))
-	server.Post("/api/signin", service.Authorization)
+	server.HandleFunc("/api/nextdate", handlers.ApiNextDate)
+	server.Post("/api/task", authorization.CheckToken(handlers.PostTask(storage)))
+	server.Get("/api/task", authorization.CheckToken(handlers.GetTaskHundler(storage)))
+	server.Put("/api/task", authorization.CheckToken(handlers.CorrectTask(storage)))
+	server.Post("/api/task/done", authorization.CheckToken(handlers.DoneTaskHundler(storage)))
+	server.Delete("/api/task", authorization.CheckToken(handlers.DeleteTaskHundler(storage)))
+	server.Get("/api/tasks", authorization.CheckToken(handlers.GetTasksHundler(storage, NumberOfOuptuTasks)))
+	server.Post("/api/signin", authorization.Authorization)
 
-	fmt.Println("запускается сервер")
-	err = http.ListenAndServe("localhost:"+port, server)
+	log.Printf("Starting server on :%s\n", port)
+	err = http.ListenAndServe(":"+port, server)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 }
