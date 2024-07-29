@@ -36,6 +36,7 @@ func New(DBFile string) (*Storage, error) {
 		}
 	}
 
+	//db, err := sqlx.Connect("sqlite3", DBFile) -- для работы необходим  TDM-GCC
 	db, err := sqlx.Connect("sqlite3", DBFile)
 
 	if err != nil {
