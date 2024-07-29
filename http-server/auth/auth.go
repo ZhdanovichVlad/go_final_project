@@ -125,13 +125,16 @@ func Authorization(w http.ResponseWriter, req *http.Request) {
 func CheckToken(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		envPassword := os.Getenv("TODO_PASSWORD")
-
 		// парсим JWT-токен из куки и если он действителен пропускаем на следующую страничку
 		if len(envPassword) > 0 {
 			var cookieToken string
 			cookie, err := req.Cookie("token")
-			if err == nil {
-				cookieToken = cookie.Value
+			if err != nil {
+				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"unauthorized user"}, true)
+				w.WriteHeader(errInt)
+				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+				w.Write(msg)
+				return
 			}
 			cookieToken = cookie.Value
 			claims := &Claims{}
