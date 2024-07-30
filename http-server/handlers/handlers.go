@@ -289,10 +289,10 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 			w.Write(msg)
 			return
 		}
-		fmt.Println("Получено id", task.ID)
+
 		_, err = strconv.Atoi(task.ID) // проверка, что в поле ID передана цифра
 		if err != nil {
-			fmt.Println("Ошибка №1")
+
 			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong ID"}, true)
 			w.WriteHeader(errInt)
 			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -307,18 +307,16 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 			w.Write(msg)
 			return
 		}
-		fmt.Println("чек пост №1")
+
 		if task.Title == "" { // значение Title всегда должно содержать описание задачи. Если оно пустое возвращаем ошибку
-			fmt.Println("вхо в ошибку 2")
+
 			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"The title is empty"}, true)
 			w.WriteHeader(errInt)
 			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 			w.Write(msg)
 			return
 		} // дата задания должна больше чем сегодня. В противном случае возвращаем ошибку
-		fmt.Println("чек пост №1.1")
 		if dateTime.Before(time.Now()) || dateTime.Equal(time.Now()) {
-			fmt.Println("вхо в ошибку 3")
 			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"the date can't be less than today"}, true)
 			w.WriteHeader(errInt)
 			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -330,7 +328,7 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 		// Если в Repeat указано другое мы возвращаем ошибку.
 		// Сразу проверяем, что строка пуста. Если нет, делаем
 		// Преобразуем строку в массив рун и сравним первую руну.
-		fmt.Println("чек пост №1.2")
+
 		if task.Repeat != "" {
 			startChars := []rune{'y', 'd', 'm', 'w'}
 			firstRuneRepeat := []rune(task.Repeat)[0]
@@ -340,7 +338,6 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 					flagChek = false
 				}
 			}
-			fmt.Println("чек пост №2")
 			if flagChek {
 				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"the rule for repetition has the wrong format."}, true)
 				w.WriteHeader(errInt)
@@ -359,7 +356,6 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 			w.Write(msg)
 			return
 		}
-		fmt.Println("чек пост №3")
 		msg, err := json.Marshal(Task{})
 		if err != nil {
 			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when generating the serialization of the response"}, false)
@@ -368,7 +364,6 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 			w.Write(msg)
 			return
 		}
-		fmt.Println("все прошло успешно")
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.Write(msg)
 
