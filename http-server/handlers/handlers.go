@@ -316,7 +316,8 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 			w.Write(msg)
 			return
 		} // дата задания должна больше чем сегодня. В противном случае возвращаем ошибку
-		if dateTime.Before(time.Now()) || dateTime.Equal(time.Now()) {
+		if dateTime.Before(time.Now()) && dateTime.Equal(time.Now()) {
+			//if dateTime.Before(time.Now()) || !dateTime.Equal(time.Now()) {
 			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"the date can't be less than today"}, true)
 			w.WriteHeader(errInt)
 			w.Header().Set("Content-Type", "application/json; charset=UTF-8")

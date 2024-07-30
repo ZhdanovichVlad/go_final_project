@@ -8,4 +8,4 @@ var FullNextDate = true
 var Search = true
 
 // var Token = “
-var Token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdXRob3JpemVkIjp0cnVlLCJzdW0iOjUwMCwiZXhwIjoxNzIyMjgwNzQ0fQ.WqZM1HxB_dVnPd6QHuTAgSHbB0JMWdZWYU_q659qzj0"
+var Token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdXRob3JpemVkIjp0cnVlLCJzdW0iOjUwMCwiZXhwIjoxNzIyMzU5NzYyfQ._LxC2V5NDF2WgWjxNYP4QjXGUHTR6TfiioXzZkCZsPE"
