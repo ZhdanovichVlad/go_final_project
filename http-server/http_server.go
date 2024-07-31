@@ -1,8 +1,10 @@
 package http_server
 
-// пакет http_server используется для формирования ошибки в формате json по заданной структуре TaskResponseError
+// the http_server package is used to correct http errors for the user.
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -10,18 +12,25 @@ type TaskResponseError struct {
 	Message string `json:"error"`
 }
 
-// JsonErrorMarshal generates an error in json format. The input is to specify the error message in the TaskResponseError structure, whether the error is a server error or a bad request.
-// JsonErrorMarshal формирует ошибку в формате json. На входе нужно указать сообщение ошибки в структуре TaskResponseError, является ли ошибка ошибкой сервера или плохим запросом.
-func JsonErrorMarshal(message TaskResponseError, isBadRequest bool) ([]byte, int) {
-	var returnStatus int
-	if isBadRequest {
-		returnStatus = http.StatusBadRequest
+// ResponseJson processes, serializes, and writes to Write the error. On the input you need to specify the error message, httpStatus, error, and ResponseWriter where to write the response.
+func ResponseJson(message string, httpStatus int, err error, w http.ResponseWriter) {
+	var responseMessage string
+	if err == nil {
+		responseMessage = message
 	} else {
-		returnStatus = http.StatusInternalServerError
+		responseMessage = fmt.Sprintf("%s : %w", message, err)
 	}
-	jsonMsg, err := json.Marshal(message)
+
+	responseStruct := TaskResponseError{responseMessage}
+	jsonMsg, err := json.Marshal(responseStruct)
 	if err != nil {
-		return []byte(err.Error()), http.StatusInternalServerError
+		http.Error(w, fmt.Sprintf("error in serializing the response when an error occurs : %w", err), http.StatusInternalServerError)
 	}
-	return jsonMsg, returnStatus
+
+	w.WriteHeader(httpStatus)
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	_, err = w.Write(jsonMsg)
+	if err != nil {
+		log.Printf("error while writing response: %v", err)
+	}
 }

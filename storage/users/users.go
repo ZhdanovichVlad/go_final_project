@@ -1,6 +1,6 @@
 package users
 
-// данный пакет отвечает за сохранения пароля пользователя и выгрузку пароля из .env
+// this package is responsible for saving the user password and unloading the password from .env
 import (
 	"fmt"
 	"os"

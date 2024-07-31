@@ -12,7 +12,14 @@ import (
 	"time"
 )
 
-// структура для получения задач с фронтэнда и отправки обратно.
+// Constants for defining the database search criterion
+const (
+	FullOutput = iota
+	DateSearch
+	TextSearch
+)
+
+// a structure for receiving tasks from the frontend and sending them back to the frontend
 type Task struct {
 	ID      string `json:"id,omitempty"`
 	Date    string `json:"date,omitempty"`
@@ -21,24 +28,12 @@ type Task struct {
 	Repeat  string `json:"repeat,omitempty"`
 }
 
-// Структура для возврата в формате JSON ответа при добавлении задачи
+// Structure for returning a JSON-formatted response when adding a task
 type TaskResponseID struct {
 	ID string `json:"id"`
 }
 
-// описываем интерфес нашей базы данных, что бы мы использовать методы для работы с базой данных
-type ServerJob interface {
-	AddTask(date string, title string, comment string, repeat string) (string, error)
-	GetTasks(NumberOfOuptuTasks int, tasks []Task) ([]Task, error)
-	GetTask(id string) (Task, error)
-	UpdateTask(task Task) error
-	DeleteTask(idTask string) error
-	UpdateDateTask(idTask string, newDateString string) error
-	SearchTasks(code int, searchQuery string, NumberOfOuptuTasks int) ([]Task, error)
-}
-
 // ApiNextDate function for the api.NextDate handle. Sends the user the date when the next task should be performed.
-// ApiNextDate функция для ручки api.NextDate. Отправляет пользователю дату когда надо выполнить следующую задачу.
 func ApiNextDate(w http.ResponseWriter, req *http.Request) {
 
 	now := req.FormValue("now")
@@ -52,43 +47,36 @@ func ApiNextDate(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	w.Write([]byte(answear))
+	_, err = w.Write([]byte(answear))
+	if err != nil {
+		log.Printf("error while writing response: %v", err)
+	}
 
 }
 
 // PostTask. Нandler function that adds tasks to the database
-// PostTask. Функция-хендлер, добавляющая задания в базу данных
 func PostTask(serverJob ServerJob) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		var task Task
 		var buf bytes.Buffer
 		_, err := buf.ReadFrom(req.Body)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"Error when reading from req.Body"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("Error when reading from req.Body", http.StatusBadRequest, err, w)
 			return
 		}
 
 		if err = json.Unmarshal(buf.Bytes(), &task); err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"dicerelization error"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("Deserialization error", http.StatusInternalServerError, err, w)
 			return
 		}
 
 		if task.Title == "" {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"dicerelization error"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("the Title field cannot be empty", http.StatusBadRequest, nil, w)
 			return
 		}
-		var date string // - создаем дату, которая будет записана в базу данных
-		// делаем проверку на значение даты и правила повтора.
-		// В зависимости от установленных правил устанавливаем date которе будет записано в базу данных
+		var date string // - create a date that will be written to the database
+		// check for date value and repeat rules.
+		// Depending on the rules set, set the date to be written to the database.
 		switch {
 		case task.Date == time.Now().Format("20060102"):
 			date = time.Now().Format("20060102")
@@ -99,10 +87,7 @@ func PostTask(serverJob ServerJob) http.HandlerFunc {
 		case task.Repeat != "" && task.Date != "":
 			dataTime, err := time.Parse("20060102", task.Date)
 			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"Parse to date error"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("Parse to date error", http.StatusBadRequest, err, w)
 				return
 			}
 			if dataTime.After(time.Now()) {
@@ -110,20 +95,14 @@ func PostTask(serverJob ServerJob) http.HandlerFunc {
 			} else {
 				date, err = api.NextDate(time.Now(), task.Date, task.Repeat)
 				if err != nil {
-					msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"api.NextDate Error"}, false)
-					w.WriteHeader(errInt)
-					w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-					w.Write(msg)
+					http_server.ResponseJson("api.NextDate Error", http.StatusBadRequest, err, w)
 					return
 				}
 			}
 		case task.Repeat == "" && task.Date != "":
 			dataTime, err := time.Parse("20060102", task.Date)
 			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"Parse to date error"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("Parse to date error", http.StatusBadRequest, err, w)
 				return
 			}
 			if dataTime.Before(time.Now()) {
@@ -133,22 +112,12 @@ func PostTask(serverJob ServerJob) http.HandlerFunc {
 			}
 		default:
 			date = task.Date
-			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"api.NextDate Error"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
-				return
-			}
 		}
 
-		//// добавляем в БД новую задачу
+		//// add a new task to the database
 		lastID, err := serverJob.AddTask(date, task.Title, task.Comment, task.Repeat)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"dicerelization error"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("Deserialization error", http.StatusInternalServerError, err, w)
 			return
 		}
 
@@ -156,64 +125,52 @@ func PostTask(serverJob ServerJob) http.HandlerFunc {
 
 		answearJSON, err := json.Marshal(&answear)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"dicerelization error"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("Deserialization error", http.StatusInternalServerError, err, w)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-		w.Write(answearJSON)
-
+		_, err = w.Write(answearJSON)
+		if err != nil {
+			log.Printf("error while writing response: %v", err)
+		}
 	}
 }
 
-// GetTasksHundler function to get the nearest tasks. The number of tasks is set by the variable NumberOfOupTasksString. The variable is defined in the .env file
+// GetTasks function to get the nearest tasks. The number of tasks is set by the variable NumberOfOupTasksString. The variable is defined in the .env file
 // this function also handles search by date or text.
-// GetTasksHundler функция для нахождения ближайших задач. Количество задач задается переменной NumberOfOutTasksString. Переменная определена в файле .env
-// в данной функции так же обрабатывается поиск по дате или тексту.
-func GetTasksHundler(serverJob ServerJob, NumberOfOutTasksString string) http.HandlerFunc {
+func GetTasks(serverJob ServerJob, NumberOfOutTasksString string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		NumberOfOutTasksInt, err := strconv.Atoi(NumberOfOutTasksString)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"NumberOfOutTasksString to NumberOfOutTasksInt convert error"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("NumberOfOutTasksString to NumberOfOutTasksInt convert error. Сheck the .env file.", http.StatusInternalServerError, err, w)
 			return
 		}
 		reqQuery := req.URL.Query().Get("search")
-		// Исходя из значений reqQuery у нас есть три возможных случая. Каждый будет иметь свою кодировку
-		//1-case. reqQuery - пуста.         Код 0. Возвращается заданное в параметре NumberOfOutTasksString ближайших задач
-		//2-case. reqQuery содержит дату  - Код 1. Происходит поиск в базе данных по дате.
-		//3-case. reqQuery содержит текст - Код 2. Происходит поиск в базе данных по полям title и comment
+		// Based on the reqQuery values, we have three possible cases. Each will have its own encoding
+		//1-case. reqQuery is empty.         Code 0. The NumberOfOutTasksString of the nearest tasks specified in the NumberOfOutTasksString parameter is returned
+		//2-case. reqQuery contains date -   Code 1. The database is searched by date.
+		//3-case. reqQuery contains text -   Code 2. The database is searched by title and comment fields
 		var code int
 		_, err = time.Parse("02.01.2006", reqQuery)
 		if reqQuery == "" {
-			code = 0
+			code = FullOutput
 		} else if err == nil {
-			code = 1
+			code = DateSearch
 		} else {
-			code = 2
+			code = TextSearch
 		}
 
-		var answearRows []Task // создание будущего ответа пользователю
-		if code == 0 {         // случай при возврате ближайших задач
-			answearRows, err = serverJob.GetTasks(NumberOfOutTasksInt, answearRows)
+		var answearRows []Task  // creating a future reply to the user
+		if code == FullOutput { // case when returning the nearest tasks
+			answearRows, err = serverJob.GetTasks(NumberOfOutTasksInt)
 			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when retrieving tasks from the database"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("error when retrieving tasks from the database", http.StatusInternalServerError, err, w)
 				return
 			}
-		} else { // случай поиска по дате или по тексту
+		} else { // case of searching by date or text
 			answearRows, err = serverJob.SearchTasks(code, reqQuery, NumberOfOutTasksInt)
 			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when retrieving tasks from the database"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("error when retrieving tasks from the database", http.StatusInternalServerError, err, w)
 				return
 			}
 		}
@@ -224,111 +181,85 @@ func GetTasksHundler(serverJob ServerJob, NumberOfOutTasksString string) http.Ha
 		var answearsStruck = map[string][]Task{"tasks": answearRows}
 		jsonMsg, err := json.Marshal(answearsStruck)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"Error when using the Marshal function"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("error when using the Marshal function", http.StatusInternalServerError, err, w)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-		w.Write(jsonMsg)
+		_, err = w.Write(jsonMsg)
+		if err != nil {
+			log.Printf("error while writing response: %v", err)
+		}
 	}
 }
 
-// GetTaskHundler function returns a task from the database by the specified ID in the Query
-// GetTaskHundler функция возвращает задачу из базы данных по заданному ID в Query
-func GetTaskHundler(serverJob ServerJob) http.HandlerFunc {
+// GetTask function returns a task from the database by the specified ID in the Query
+func GetTask(serverJob ServerJob) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		qeryID := req.URL.Query().Get("id")
 		if qeryID == "" {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong id"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("wrong id", http.StatusBadRequest, nil, w)
 			return
 		}
 		answerRow, err := serverJob.GetTask(qeryID)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when retrieving tasks from the database"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("error when retrieving tasks from the database", http.StatusInternalServerError, err, w)
 			return
 		}
 		jsonMsg, err := json.Marshal(answerRow)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"Error when using the Marshal function"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("Error when using the Marshal function", http.StatusInternalServerError, err, w)
 			return
+
 		}
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-		w.Write(jsonMsg)
+		_, err = w.Write(jsonMsg)
+		if err != nil {
+			log.Printf("error while writing response: %v", err)
+		}
 	}
 }
 
 // CorrectTask  function that CorrectTask in the database
-// CorrectTask функция для корректировки задачи в базе данных по полученному ID и
 func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		var task Task
 		var buf bytes.Buffer
 		_, err := buf.ReadFrom(req.Body)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"Error when reading from req.Body"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("Error when reading from req.Body", http.StatusBadRequest, err, w)
 			return
 		}
 		if err = json.Unmarshal(buf.Bytes(), &task); err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"dicerelization error"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("deserialization error", http.StatusInternalServerError, err, w)
 			return
 		}
 
 		_, err = strconv.Atoi(task.ID) // проверка, что в поле ID передана цифра
 		if err != nil {
-
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong ID"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("wrong ID", http.StatusBadRequest, err, w)
 			return
+
 		}
 		dateTime, err := time.Parse("20060102", task.Date)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"the date is in the wrong format"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("Parse to date error", http.StatusBadRequest, err, w)
 			return
 		}
 
-		if task.Title == "" { // значение Title всегда должно содержать описание задачи. Если оно пустое возвращаем ошибку
-
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"The title is empty"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+		if task.Title == "" { // the Title value must always contain a description of the task. If it is empty, we return an error
+			http_server.ResponseJson("The title is empty", http.StatusBadRequest, nil, w)
 			return
-		} // дата задания должна больше чем сегодня. В противном случае возвращаем ошибку
+
+		} // the date of the task must be greater than today. Otherwise we return an error
 		if dateTime.Before(time.Now()) && dateTime.Equal(time.Now()) {
-			//if dateTime.Before(time.Now()) || !dateTime.Equal(time.Now()) {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"the date can't be less than today"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("the date can't be less than today", http.StatusBadRequest, nil, w)
 			return
 		}
 
-		// Правило повторение(Repeat) может быть пустой строкой или начинаться из следующих символов y,d,m,w.
-		// Если в Repeat указано другое мы возвращаем ошибку.
-		// Сразу проверяем, что строка пуста. Если нет, делаем
-		// Преобразуем строку в массив рун и сравним первую руну.
+		// The Repeat rule can be an empty string or begin with the following characters y,d,m,w.
+		// If Repeat specifies the other, we return an error.
+		// We immediately check if the string is empty. If it is not, we do
+		// Convert the string to an array of runes and compare the first rune.
 
 		if task.Repeat != "" {
 			startChars := []rune{'y', 'd', 'm', 'w'}
@@ -340,150 +271,114 @@ func CorrectTask(serverJob ServerJob) http.HandlerFunc {
 				}
 			}
 			if flagChek {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"the rule for repetition has the wrong format."}, true)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("the rule for repetition has the wrong format.", http.StatusBadRequest, nil, w)
 				return
 			}
 		}
 
-		// обновляем задачу в базе данных
+		// update the task in the database
 		err = serverJob.UpdateTask(task)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when updating data on the server"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("error when updating data on the server", http.StatusInternalServerError, err, w)
 			return
 		}
-		msg, err := json.Marshal(Task{})
+		jsonMsg, err := json.Marshal(Task{})
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when generating the serialization of the response"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("error when generating the serialization of the response", http.StatusInternalServerError, err, w)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-		w.Write(msg)
+		_, err = w.Write(jsonMsg)
+		if err != nil {
+			log.Printf("error while writing response: %v", err)
+		}
 
 	}
 }
 
-// DoneTaskHundler function to delete and update a task in the database by a given ID if it has been executed
-// DoneTaskHundler функция для удаления и обновления задачи в базе данных по заданному ID, если оно было выполнено
-func DoneTaskHundler(serverJob ServerJob) http.HandlerFunc {
+// DoneTask function to delete and update a task in the database by a given ID if it has been executed
+func DoneTask(serverJob ServerJob) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		idDone := req.URL.Query().Get("id")
 		if idDone == "" {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong id"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("wrong id", http.StatusBadRequest, nil, w)
 			return
 		}
 		_, err := strconv.Atoi(idDone) // проверка, на то что в поле ID передано число
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong ID"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("wrong id", http.StatusBadRequest, err, w)
 			return
 		}
 		task, err := serverJob.GetTask(idDone) // проверка, что задание существует в базе данных
 		if task.ID == "" {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"id not found in the database"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("id not found in the database", http.StatusBadRequest, err, w)
 			return
-
 		}
-		// Eсли значение для повторения не указано в базе данных. Мы его удаляем.
-		// В противном случае (блок else), рассчитываем новую дату и обновляем задачу
+		// If the value to repeat is not specified in the database. We delete it.
+		// Otherwise (block else), we calculate a new date and update the task
 		if task.Repeat == "" {
 			err = serverJob.DeleteTask(idDone)
 			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"failed to delete the task"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("failed to delete the task", http.StatusInternalServerError, err, w)
 				return
 			}
 		} else {
 			newDateString, err := api.NextDate(time.Now(), task.Date, task.Repeat)
 			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"api.NextDate Error"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("api.NextDate Error", http.StatusInternalServerError, err, w)
 				return
 			}
 			err = serverJob.UpdateDateTask(idDone, newDateString)
 			if err != nil {
-				msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"data update error"}, false)
-				w.WriteHeader(errInt)
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-				w.Write(msg)
+				http_server.ResponseJson("data update error", http.StatusInternalServerError, err, w)
 				return
 			}
 		}
 		var answear = map[string]any{}
-		msg, err := json.Marshal(answear)
+		jsonMsg, err := json.Marshal(answear)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when generating the serialization of the response"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("error when generating the serialization of the response", http.StatusInternalServerError, err, w)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-		w.Write(msg)
+		_, err = w.Write(jsonMsg)
+		if err != nil {
+			log.Printf("error while writing response: %v", err)
+		}
 	}
 }
 
-// DeleteTaskHundler function to delete a task by the given Query id.
-// DeleteTaskHundler функция для удаления задачи по заданному в Query id
-func DeleteTaskHundler(serverJob ServerJob) http.HandlerFunc {
+// DeleteTask function to delete a task by the given Query id.
+func DeleteTask(serverJob ServerJob) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		idDone := req.URL.Query().Get("id")
 		if idDone == "" {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong id"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("wrong id", http.StatusBadRequest, nil, w)
 			return
 		}
 		_, err := strconv.Atoi(idDone) // проверка, передано ли в поле ID цифра
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"wrong ID"}, true)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("wrong id", http.StatusBadRequest, err, w)
 			return
 		}
 
-		err = serverJob.DeleteTask(idDone) // Удаляем задачу. Если удалить не удалось, возращается ошибка
+		err = serverJob.DeleteTask(idDone) // Delete the task. If the deletion fails, an error is returned
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"failed to delete the task"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("failed to delete the task", http.StatusBadRequest, err, w)
 			return
 		}
 
-		// формируем и фозвращаем пустой json в качестве ответа
+		//generate and return empty json as a response
 		var answear = map[string]any{}
-		msg, err := json.Marshal(answear)
+		jsonMsg, err := json.Marshal(answear)
 		if err != nil {
-			msg, errInt := http_server.JsonErrorMarshal(http_server.TaskResponseError{"error when generating the serialization of the response"}, false)
-			w.WriteHeader(errInt)
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			w.Write(msg)
+			http_server.ResponseJson("error when generating the serialization of the response", http.StatusInternalServerError, err, w)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-		w.Write(msg)
+		_, err = w.Write(jsonMsg)
+		if err != nil {
+			log.Printf("error while writing response: %v", err)
+		}
 	}
 }

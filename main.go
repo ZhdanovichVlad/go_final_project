@@ -15,10 +15,10 @@ import (
 )
 
 func main() {
-	// используем библиотеку godotenv что бы загрузить переменные окружения корня проекта
+	// use the godotenv library to load the project root environment variables
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatalf("Error loading .env file: %s", err)
+		log.Fatalf("Error loading .env file: %w", err)
 	}
 	var port string = os.Getenv("TODO_PORT")
 	var DBFile = os.Getenv("TODO_DBFILE")
@@ -28,22 +28,22 @@ func main() {
 	defer storage.Close()
 
 	server := chi.NewRouter()
-	// Описание основных хэндлеров. Middleware authorization.CheckToken используется для проверки JWT токена
-	// Токен формируется при авторизации пользователя.
+	// Basic Handler Description. Middleware authorization.CheckToken is used to check the JWT token
+	// The token is generated during user authorization.
 	server.Handle("/*", http.FileServer(http.Dir("web")))
 	server.HandleFunc("/api/nextdate", handlers.ApiNextDate)
 	server.Post("/api/task", authorization.CheckToken(handlers.PostTask(storage)))
-	server.Get("/api/task", authorization.CheckToken(handlers.GetTaskHundler(storage)))
+	server.Get("/api/task", authorization.CheckToken(handlers.GetTask(storage)))
 	server.Put("/api/task", authorization.CheckToken(handlers.CorrectTask(storage)))
-	server.Post("/api/task/done", authorization.CheckToken(handlers.DoneTaskHundler(storage)))
-	server.Delete("/api/task", authorization.CheckToken(handlers.DeleteTaskHundler(storage)))
-	server.Get("/api/tasks", authorization.CheckToken(handlers.GetTasksHundler(storage, NumberOfOuptuTasks)))
+	server.Post("/api/task/done", authorization.CheckToken(handlers.DoneTask(storage)))
+	server.Delete("/api/task", authorization.CheckToken(handlers.DeleteTask(storage)))
+	server.Get("/api/tasks", authorization.CheckToken(handlers.GetTasks(storage, NumberOfOuptuTasks)))
 	server.Post("/api/signin", authorization.Authorization)
 
 	log.Printf("Starting server on :%s\n", port)
 	err = http.ListenAndServe(":"+port, server)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("server startup error: %w", err)
 	}
 
 }
