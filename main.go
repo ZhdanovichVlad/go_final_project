@@ -39,6 +39,8 @@ func main() {
 	server.Delete("/api/task", authorization.CheckToken(handlers.DeleteTask(storage)))
 	server.Get("/api/tasks", authorization.CheckToken(handlers.GetTasks(storage, NumberOfOuptuTasks)))
 	server.Post("/api/signin", authorization.Authorization)
+	
+
 
 	log.Printf("Starting server on :%s\n", port)
 	err = http.ListenAndServe(":"+port, server)

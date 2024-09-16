@@ -33,8 +33,7 @@ func New(DBFile string) (*Storage, error) {
 		}
 	}
 
-	//db, err := sqlx.Connect("sqlite3", DBFile) -- TDM-GCC is required for operation
-	db, err := sqlx.Connect("sqlite3", DBFile)
+	db, err := sqlx.Connect("sqlite3", DBFile) //-- TDM-GCC is required for operation
 
 	if err != nil {
 		fmt.Println(err)
