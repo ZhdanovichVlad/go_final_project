@@ -1,4 +1,7 @@
-# .gitignore
-
-# Игнорируем файл настроек окружения
 .env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+.idea/
